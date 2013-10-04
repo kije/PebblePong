@@ -17,10 +17,10 @@ TextLayer scoreLayer;
 
 Layer gameLayer;
 
-Player pl1;
-Player pl2;
+struct Player pl1;
+struct Player pl2;
 
-Ball ball;
+struct Ball ball;
 
 
 void init_player(struct Player *player) {
