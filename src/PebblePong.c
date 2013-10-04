@@ -1,6 +1,7 @@
 #include "pebble_os.h"
 #include "pebble_app.h"
 #include "pebble_fonts.h"
+#include "PebblePong.h"
 
 
 #define MY_UUID { 0x61, 0xD1, 0x20, 0x75, 0xB7, 0x87, 0x4C, 0xCD, 0x86, 0xD5, 0xED, 0x5D, 0x30, 0x4C, 0x2A, 0xA4 }
@@ -16,20 +17,42 @@ TextLayer scoreLayer;
 
 Layer gameLayer;
 
+Player pl1;
+Player pl2;
+
+Ball ball;
+
+
+void init_player(struct Player *player) {
+  player.score = 0;
+  Paddle paddle;
+  paddle.v_position = 50; // TODO half height
+  paddle.length = 20;
+  paddle.thikness = 2;
+  player.paddle = paddle;
+}
+
+void init_ball(struct Ball *b) {
+  //b.position = GPoint();
+}
 
 
 
-
-void drawDottedLine(GContext *ctx, GPoint p1, GPoint p2, uint16_t space) {
+void draw_dotted_line(GContext *ctx, GPoint p1, GPoint p2, uint16_t space) {
   uint16_t start = p1.y;
   uint16_t stop = p2.y;
 
   for (uint16_t i = start; i < stop; i+=(space*2)) {
-    graphics_draw_line(ctx, GPoint(p1.x,i), GPoint(p2.x,i+space)); 
+    graphics_draw_line(ctx, GPoint(p1.x,i), GPoint(p2.x,i+space));
   }
 }
 
-void drawGameField(struct Layer *layer, GContext *ctx) {
+void ki() {
+  // ist der ball weiter oben dann bewege die Platte nach oben
+  // ist der ball weiter unten dann bewege die Platte nach unten
+}
+
+void draw_game_field(struct Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
   graphics_context_set_stroke_color (ctx, GColorWhite); 
   graphics_context_set_fill_color (ctx, GColorWhite);   
@@ -38,7 +61,7 @@ void drawGameField(struct Layer *layer, GContext *ctx) {
   graphics_draw_rect(ctx, bounds);
 
   // Middle-line
-  drawDottedLine(ctx, GPoint(bounds.size.w/2,0), GPoint(bounds.size.w/2,bounds.size.h), 3); 
+  draw_dotted_line(ctx, GPoint(bounds.size.w/2,0), GPoint(bounds.size.w/2,bounds.size.h), 3); 
 
   layer_mark_dirty(layer); /// !!!!!!!!!!! Maybe not so a good idea?  
 }
@@ -71,8 +94,15 @@ void handle_init(AppContextRef ctx) {
 
   // Game Field
   layer_init(&gameLayer, GRect(5, 40, 134, 90));
-  layer_set_update_proc(&gameLayer, &drawGameField);
+  layer_set_update_proc(&gameLayer, &draw_game_field);
   layer_add_child(&window.layer, &gameLayer);
+
+  // Player init
+  init_player(&pl1);
+  init_player(&pl2);
+
+  // Ball init 
+  init_ball(&ball);
 }
 
 
