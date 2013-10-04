@@ -34,11 +34,13 @@ void drawGameField(struct Layer *layer, GContext *ctx) {
   graphics_context_set_stroke_color (ctx, GColorWhite); 
   graphics_context_set_fill_color (ctx, GColorWhite);   
 
-  // Storke
+  // Frame
   graphics_draw_rect(ctx, bounds);
 
   // Middle-line
   drawDottedLine(ctx, GPoint(bounds.size.w/2,0), GPoint(bounds.size.w/2,bounds.size.h), 3); 
+
+  layer_mark_dirty(layer); /// !!!!!!!!!!! Maybe not so a good idea?  
 }
 
 void handle_init(AppContextRef ctx) {
@@ -68,7 +70,7 @@ void handle_init(AppContextRef ctx) {
   layer_add_child(&window.layer, &scoreLayer.layer);
 
   // Game Field
-  layer_init(&gameLayer, GRect(5, 40, 134, 80));
+  layer_init(&gameLayer, GRect(5, 40, 134, 90));
   layer_set_update_proc(&gameLayer, &drawGameField);
   layer_add_child(&window.layer, &gameLayer);
 }
