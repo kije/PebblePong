@@ -1,0 +1,17 @@
+
+{"friendlyVersion": "0.1",
+ "versionDefName": "PEBBLE_PONG_RESOURCES",
+ "media": [
+	    {
+	    "type": "font",
+	    "defName": "FONT_RALEWAY_THIN_15",
+	    "file": "fonts/Raleway_Thin.ttf"
+	    },
+	    {
+	    "type": "font",
+	    "defName": "FONT_ORBITRON_BOLD_15",
+	    "file": "fonts/Orbitron_Bold.ttf"
+	    }
+	   
+	  ]
+}
