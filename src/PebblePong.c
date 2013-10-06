@@ -1,7 +1,7 @@
 #include "pebble_os.h"
 #include "pebble_app.h"
 #include "pebble_fonts.h"
-#include "PebblePong.h"
+
 
 
 #define MY_UUID { 0x61, 0xD1, 0x20, 0x75, 0xB7, 0x87, 0x4C, 0xCD, 0x86, 0xD5, 0xED, 0x5D, 0x30, 0x4C, 0x2A, 0xA4 }
@@ -17,25 +17,42 @@ TextLayer scoreLayer;
 
 Layer gameLayer;
 
-struct Player pl1;
-struct Player pl2;
+typedef struct {
+  GRect bounds;
+} Paddle;
 
-struct Ball ball;
+#define PADDLE_HEIGHT 20
+#define PADDLE_WIDTH 2
+
+typedef enum {
+  WEST, EAST
+} Side;
 
 
-void init_player(struct Player *player) {
-  player.score = 0;
+typedef struct {
+  uint16_t score;
   Paddle paddle;
-  paddle.v_position = 50; // TODO half height
-  paddle.length = 20;
-  paddle.thikness = 2;
-  player.paddle = paddle;
-}
+  Side side;
+} Player;
 
-void init_ball(struct Ball *b) {
-  //b.position = GPoint();
-}
+Player pl1,pl2;
 
+typedef struct {
+  GPoint position;
+} ball;
+
+
+
+void init_player(Player *player, Side side) {
+  GRect bounds = layer_get_bounds(&gameLayer);
+  Paddle paddle = (Paddle){GRect(
+    (side == WEST ? 0+PADDLE_WIDTH : bounds.size.w-PADDLE_WIDTH-2 /* Why 2 px offset? */),  
+    (bounds.size.h/2)-(PADDLE_HEIGHT/2), 
+    PADDLE_WIDTH,
+    PADDLE_HEIGHT
+  )};
+  *player = (Player){0,paddle, side};
+}
 
 
 void draw_dotted_line(GContext *ctx, GPoint p1, GPoint p2, uint16_t space) {
@@ -45,6 +62,10 @@ void draw_dotted_line(GContext *ctx, GPoint p1, GPoint p2, uint16_t space) {
   for (uint16_t i = start; i < stop; i+=(space*2)) {
     graphics_draw_line(ctx, GPoint(p1.x,i), GPoint(p2.x,i+space));
   }
+}
+
+void draw_paddle(GContext *ctx, Paddle paddle) {
+  graphics_fill_rect(ctx, paddle.bounds, 0, GCornerNone);
 }
 
 void ki() {
@@ -63,7 +84,11 @@ void draw_game_field(struct Layer *layer, GContext *ctx) {
   // Middle-line
   draw_dotted_line(ctx, GPoint(bounds.size.w/2,0), GPoint(bounds.size.w/2,bounds.size.h), 3); 
 
-  layer_mark_dirty(layer); /// !!!!!!!!!!! Maybe not so a good idea?  
+
+  draw_paddle(ctx,pl1.paddle);
+  draw_paddle(ctx,pl2.paddle);
+
+  //layer_mark_dirty(layer); /// !!!!!!!!!!! Maybe not so a good idea?  
 }
 
 void handle_init(AppContextRef ctx) {
@@ -73,6 +98,7 @@ void handle_init(AppContextRef ctx) {
   window_init(&window, "PebblePong");
   window_set_background_color(&window, GColorBlack);
   window_stack_push(&window, true /* Animated */);
+
 
   // Title Layer
   text_layer_init(&titleLayer, GRect(0,0,144,23));
@@ -92,17 +118,39 @@ void handle_init(AppContextRef ctx) {
   text_layer_set_text_color(&scoreLayer, GColorWhite);
   layer_add_child(&window.layer, &scoreLayer.layer);
 
+
+  /* Better Way for Text?
+
+  graphics_context_set_text_color(ctx, GColorBlack);
+
+  graphics_text_draw(ctx,
+         "Text here.",
+         fonts_get_system_font(FONT_KEY_FONT_FALLBACK),
+         GRect(5, 5, 144-10, 100),
+         GTextOverflowModeWordWrap,
+         GTextAlignmentLeft,
+         NULL);
+
+  graphics_text_draw(ctx,
+         "And text here as well.",
+         fonts_get_system_font(FONT_KEY_FONT_FALLBACK),
+         GRect(90, 100, 144-95, 60),
+         GTextOverflowModeWordWrap,
+         GTextAlignmentRight,
+         NULL);
+
+         */
+
   // Game Field
+
   layer_init(&gameLayer, GRect(5, 40, 134, 90));
   layer_set_update_proc(&gameLayer, &draw_game_field);
   layer_add_child(&window.layer, &gameLayer);
 
-  // Player init
-  init_player(&pl1);
-  init_player(&pl2);
+  // Player 
 
-  // Ball init 
-  init_ball(&ball);
+  init_player(&pl1, EAST);
+  init_player(&pl2, WEST);
 }
 
 
