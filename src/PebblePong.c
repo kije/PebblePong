@@ -1,6 +1,7 @@
 #include "pebble_os.h"
 #include "pebble_app.h"
 #include "pebble_fonts.h"
+#include <math.h>
 
 
 
@@ -16,19 +17,38 @@ PBL_APP_INFO(MY_UUID,
 
 #define BALL_SIZE_HEIGHT 5
 #define BALL_SIZE_WIDTH 5
+#define BALL_SPEED 3 // Pixel per Update
 
-#define TIMER_COOKIE_PADDLE_UPADTE 0
-#define TIMER_COOKIE_DEFAULT_UPDATE 1
+#define PADDLE_SPEED 2
+
+
+#define UPDATE_FREQUENCY 1000/10
+#define UPDATE_TIMER_COOKIE 1
+
+const float ONE_DEGREE = TRIG_MAX_ANGLE/360.0F;
+
+
+typedef struct PrecisePoint PrecisePoint;
+
+struct PrecisePoint {
+  float x;
+  float y;
+};
 
 
 
 typedef enum Side Side;
+typedef enum Direction Direction;
 typedef struct Paddle Paddle;
 typedef struct Player Player;
 typedef struct Ball Ball;
 
 enum Side {
   WEST, EAST, SOUTH, NORTH
+};
+
+enum Direction {
+  LEFT, RIGHT
 };
 
 struct Paddle {
@@ -44,9 +64,9 @@ struct Player {
 };
 
 struct Ball {
-  GPoint position;
+  PrecisePoint position;
   GSize size;
-  Side go_off_side;
+  int32_t angle;
 };
 
 
@@ -54,26 +74,74 @@ Window window;
 TextLayer titleLayer;
 TextLayer scoreLayer;
 
+AppTimerHandle timer_handle;
+
 Layer gameLayer;
 Player pl1,pl2;
 Ball ball;
 
+GRect validField;
+
+
 
 
 void ki(Player *self) {
-  uint16_t ball_vertical_position = ball.position.y;
-  uint16_t paddle_vertical_position = (*self).paddle.bounds.origin.y;
+  int32_t ball_vertical_position = ball.position.y;
+  int32_t paddle_vertical_position = (*self).paddle.bounds.origin.y;
 
   if (ball_vertical_position > paddle_vertical_position) { // ball is above paddle
+    (*self).paddle.bounds.origin.y += PADDLE_SPEED;
+
+  } else if (ball_vertical_position == paddle_vertical_position) {
 
   } else { // ball is below paddle
-
+    (*self).paddle.bounds.origin.y -= PADDLE_SPEED;
   }
 }
 
 void human(Player *self) {
+}
+
+// TODO: Multiplayer
+void multiplayer(Player *self) {
 
 }
+
+
+float reflect_angle(int32_t angle) {
+  return (float)180.0F-angle;
+}
+
+
+void move_ball(Ball *b) {
+
+  // cos(angle) -> how much the ball goes right ( > 0 means it goes left)
+  // sin(angle) -> the slope
+
+  float x = (*b).position.x;
+  float y = (*b).position.y;
+
+   if (x < 0 || x > gameLayer.bounds.size.w || y < 0 || y > gameLayer.bounds.size.h) {
+      (*b).angle = reflect_angle((*b).angle);
+    } 
+
+
+  float c = (cos_lookup(((*b).angle)*ONE_DEGREE)/(float)TRIG_MAX_RATIO);
+  float s = (sin_lookup(((*b).angle)*ONE_DEGREE)/(float)TRIG_MAX_RATIO);
+
+
+  (*b).position.y = y-(c*(float)BALL_SPEED);
+  (*b).position.x = x+(s*(float)BALL_SPEED);
+
+ 
+
+  /*if ((*b).direction == LEFT) {
+    (*b).position.x = ((*b).position.x - BALL_SPEED);
+  } else {
+    (*b).position.x = ((*b).position.x + BALL_SPEED);
+  }*/
+}
+
 
 void init_player(Player *player, Side side, bool is_ki) {
   GRect bounds = layer_get_bounds(&gameLayer);
@@ -95,9 +163,9 @@ void init_player(Player *player, Side side, bool is_ki) {
 void init_ball(Ball *b) {
   GRect bounds = layer_get_bounds(&gameLayer);
   *b = (Ball){
-    GPoint(bounds.size.w/2, bounds.size.h/2),
+    {(bounds.size.w/2)-(BALL_SIZE_WIDTH/2), (bounds.size.h/2)-(BALL_SIZE_HEIGHT/2)},
     GSize(BALL_SIZE_WIDTH, BALL_SIZE_HEIGHT),
-    EAST // TODO RANOM
+    170
   };
 }
 
@@ -181,19 +249,18 @@ void handle_init(AppContextRef ctx) {
 
   // Setup timer
 
-  app_timer_send_event (ctx, 50, TIMER_COOKIE_PADDLE_UPADTE);
-  app_timer_send_event (ctx, 200, TIMER_COOKIE_DEFAULT_UPDATE);
+  timer_handle = app_timer_send_event(ctx, UPDATE_FREQUENCY, UPDATE_TIMER_COOKIE);
 }
 
 void handle_timeout(AppContextRef app_ctx, AppTimerHandle handle, uint32_t cookie) {
   switch (cookie) {
-    case TIMER_COOKIE_PADDLE_UPADTE:
+    case UPDATE_TIMER_COOKIE:
       pl1.control_handler(&pl1);
       pl2.control_handler(&pl2);
+      move_ball(&ball);
       layer_mark_dirty(&gameLayer);
-      break;
-
-    case TIMER_COOKIE_DEFAULT_UPDATE:
+      layer_mark_dirty(&window.layer);
+      timer_handle = app_timer_send_event(app_ctx, UPDATE_FREQUENCY, UPDATE_TIMER_COOKIE);
       break;
   }
 }
