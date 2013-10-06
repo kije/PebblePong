@@ -11,39 +11,71 @@ PBL_APP_INFO(MY_UUID,
              DEFAULT_MENU_ICON,
              APP_INFO_STANDARD_APP);
 
+#define PADDLE_HEIGHT 20
+#define PADDLE_WIDTH 2
+
+#define BALL_SIZE_HEIGHT 5
+#define BALL_SIZE_WIDTH 5
+
+#define TIMER_COOKIE_PADDLE_UPADTE 0
+#define TIMER_COOKIE_DEFAULT_UPDATE 1
+
+
+
+typedef enum Side Side;
+typedef struct Paddle Paddle;
+typedef struct Player Player;
+typedef struct Ball Ball;
+
+enum Side {
+  WEST, EAST, SOUTH, NORTH
+};
+
+struct Paddle {
+  GRect bounds;
+};
+
+struct Player {
+  uint16_t score;
+  Paddle paddle;
+  Side side;
+  bool isKI;
+  void (*control_handler)(Player *); // Function pointer, which should "controll" the player (e.g. a function that emulates the ki or a function that processes real user input)
+};
+
+struct Ball {
+  GPoint position;
+  GSize size;
+  Side go_off_side;
+};
+
+
 Window window;
 TextLayer titleLayer;
 TextLayer scoreLayer;
 
 Layer gameLayer;
-
-typedef struct {
-  GRect bounds;
-} Paddle;
-
-#define PADDLE_HEIGHT 20
-#define PADDLE_WIDTH 2
-
-typedef enum {
-  WEST, EAST
-} Side;
-
-
-typedef struct {
-  uint16_t score;
-  Paddle paddle;
-  Side side;
-} Player;
-
 Player pl1,pl2;
-
-typedef struct {
-  GPoint position;
-} ball;
+Ball ball;
 
 
 
-void init_player(Player *player, Side side) {
+void ki(Player *self) {
+  uint16_t ball_vertical_position = ball.position.y;
+  uint16_t paddle_vertical_position = (*self).paddle.bounds.origin.y;
+
+  if (ball_vertical_position > paddle_vertical_position) { // ball is above paddle
+
+  } else { // ball is below paddle
+
+  }
+}
+
+void human(Player *self) {
+
+}
+
+void init_player(Player *player, Side side, bool is_ki) {
   GRect bounds = layer_get_bounds(&gameLayer);
   Paddle paddle = (Paddle){GRect(
     (side == WEST ? 0+PADDLE_WIDTH : bounds.size.w-PADDLE_WIDTH-2 /* Why 2 px offset? */),  
@@ -51,9 +83,23 @@ void init_player(Player *player, Side side) {
     PADDLE_WIDTH,
     PADDLE_HEIGHT
   )};
-  *player = (Player){0,paddle, side};
+  *player = (Player){
+    .score = 0,
+    .paddle = paddle, 
+    .side = side, 
+    .isKI = is_ki, 
+    .control_handler = (is_ki ? &ki : &human)
+  };
 }
 
+void init_ball(Ball *b) {
+  GRect bounds = layer_get_bounds(&gameLayer);
+  *b = (Ball){
+    GPoint(bounds.size.w/2, bounds.size.h/2),
+    GSize(BALL_SIZE_WIDTH, BALL_SIZE_HEIGHT),
+    EAST // TODO RANOM
+  };
+}
 
 void draw_dotted_line(GContext *ctx, GPoint p1, GPoint p2, uint16_t space) {
   uint16_t start = p1.y;
@@ -68,9 +114,8 @@ void draw_paddle(GContext *ctx, Paddle paddle) {
   graphics_fill_rect(ctx, paddle.bounds, 0, GCornerNone);
 }
 
-void ki() {
-  // ist der ball weiter oben dann bewege die Platte nach oben
-  // ist der ball weiter unten dann bewege die Platte nach unten
+void draw_ball(GContext *ctx, Ball b) {
+  graphics_fill_rect(ctx, GRect(b.position.x, b.position.y, b.size.w, b.size.h), 0, GCornerNone);
 }
 
 void draw_game_field(struct Layer *layer, GContext *ctx) {
@@ -88,7 +133,8 @@ void draw_game_field(struct Layer *layer, GContext *ctx) {
   draw_paddle(ctx,pl1.paddle);
   draw_paddle(ctx,pl2.paddle);
 
-  //layer_mark_dirty(layer); /// !!!!!!!!!!! Maybe not so a good idea?  
+
+  draw_ball(ctx, ball); 
 }
 
 void handle_init(AppContextRef ctx) {
@@ -119,28 +165,6 @@ void handle_init(AppContextRef ctx) {
   layer_add_child(&window.layer, &scoreLayer.layer);
 
 
-  /* Better Way for Text?
-
-  graphics_context_set_text_color(ctx, GColorBlack);
-
-  graphics_text_draw(ctx,
-         "Text here.",
-         fonts_get_system_font(FONT_KEY_FONT_FALLBACK),
-         GRect(5, 5, 144-10, 100),
-         GTextOverflowModeWordWrap,
-         GTextAlignmentLeft,
-         NULL);
-
-  graphics_text_draw(ctx,
-         "And text here as well.",
-         fonts_get_system_font(FONT_KEY_FONT_FALLBACK),
-         GRect(90, 100, 144-95, 60),
-         GTextOverflowModeWordWrap,
-         GTextAlignmentRight,
-         NULL);
-
-         */
-
   // Game Field
 
   layer_init(&gameLayer, GRect(5, 40, 134, 90));
@@ -149,14 +173,36 @@ void handle_init(AppContextRef ctx) {
 
   // Player 
 
-  init_player(&pl1, EAST);
-  init_player(&pl2, WEST);
+  init_player(&pl1, WEST, true);
+  init_player(&pl2, EAST, false);
+
+  // Ball 
+  init_ball(&ball);
+
+  // Setup timer
+
+  app_timer_send_event (ctx, 50, TIMER_COOKIE_PADDLE_UPADTE);
+  app_timer_send_event (ctx, 200, TIMER_COOKIE_DEFAULT_UPDATE);
+}
+
+void handle_timeout(AppContextRef app_ctx, AppTimerHandle handle, uint32_t cookie) {
+  switch (cookie) {
+    case TIMER_COOKIE_PADDLE_UPADTE:
+      pl1.control_handler(&pl1);
+      pl2.control_handler(&pl2);
+      layer_mark_dirty(&gameLayer);
+      break;
+
+    case TIMER_COOKIE_DEFAULT_UPDATE:
+      break;
+  }
 }
 
 
 void pbl_main(void *params) {
   PebbleAppHandlers handlers = {
-    .init_handler = &handle_init
+    .init_handler = &handle_init,
+    .timer_handler = &handle_timeout
   };
   app_event_loop(params, &handlers);
 }
