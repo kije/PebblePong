@@ -22,7 +22,7 @@ PBL_APP_INFO(MY_UUID,
 #define PADDLE_SPEED 2
 
 
-#define UPDATE_FREQUENCY 1000/10
+const uint16_t UPDATE_FREQUENCY = 1000/10;
 #define UPDATE_TIMER_COOKIE 1
 
 const float ONE_DEGREE = TRIG_MAX_ANGLE/360.0F;
@@ -73,6 +73,7 @@ struct Ball {
 Window window;
 TextLayer titleLayer;
 TextLayer scoreLayer;
+TextLayer debugText;
 
 AppTimerHandle timer_handle;
 
@@ -108,8 +109,12 @@ void multiplayer(Player *self) {
 }
 
 
-float reflect_angle(int32_t angle) {
-  return (float)180.0F-angle;
+int32_t reflect_angle(int32_t angle) {
+  return angle+2*(90-angle);
+}
+
+bool check_ball_position_is_valid(int32_t x, int32_t y) {
+  return (x > validField.origin.x) && (y > validField.origin.y) && (x < validField.size.w) && (y < validField.size.h);
 }
 
 
@@ -121,25 +126,36 @@ void move_ball(Ball *b) {
   float x = (*b).position.x;
   float y = (*b).position.y;
 
-   if (x < 0 || x > gameLayer.bounds.size.w || y < 0 || y > gameLayer.bounds.size.h) {
-      (*b).angle = reflect_angle((*b).angle);
-    } 
-
 
   float c = (cos_lookup(((*b).angle)*ONE_DEGREE)/(float)TRIG_MAX_RATIO);
   float s = (sin_lookup(((*b).angle)*ONE_DEGREE)/(float)TRIG_MAX_RATIO);
 
+  float new_x = x+(s*(float)BALL_SPEED);
+  float new_y = y+(c*(float)BALL_SPEED);
 
-  (*b).position.y = y-(c*(float)BALL_SPEED);
-  (*b).position.x = x+(s*(float)BALL_SPEED);
+  int16_t i = BALL_SPEED;
+  while(!check_ball_position_is_valid(new_x, new_y)) {
+    if (i == 0) {
+      (*b).angle = reflect_angle((*b).angle);
+      c = (cos_lookup(((*b).angle)*ONE_DEGREE)/TRIG_MAX_RATIO);
+      s = (sin_lookup(((*b).angle)*ONE_DEGREE)/TRIG_MAX_RATIO);
+      i = BALL_SPEED;
+    }
+    new_x = x+(s*(float)i);
+    new_y = y+(c*(float)i);
+    i--;
+    static char buffer[45] = "";
 
- 
+  snprintf(buffer, sizeof(buffer),
+      "(%d/%d) | (%d/%d) | %d",
+      (int)x, (int)y,(int)new_x, (int)new_y, (int)((*b).angle));
+  text_layer_set_text(&debugText, buffer);
+  }
 
-  /*if ((*b).direction == LEFT) {
-    (*b).position.x = ((*b).position.x - BALL_SPEED);
-  } else {
-    (*b).position.x = ((*b).position.x + BALL_SPEED);
-  }*/
+  (*b).position.y = new_y;
+  (*b).position.x = new_x;
+
+   
 }
 
 
@@ -165,7 +181,7 @@ void init_ball(Ball *b) {
   *b = (Ball){
     {(bounds.size.w/2)-(BALL_SIZE_WIDTH/2), (bounds.size.h/2)-(BALL_SIZE_HEIGHT/2)},
     GSize(BALL_SIZE_WIDTH, BALL_SIZE_HEIGHT),
-    170
+    90
   };
 }
 
@@ -233,11 +249,24 @@ void handle_init(AppContextRef ctx) {
   layer_add_child(&window.layer, &scoreLayer.layer);
 
 
+//Score Layer
+  text_layer_init(&debugText, GRect(0,130,144,18));
+  text_layer_set_text_alignment(&debugText, GTextAlignmentCenter);
+  text_layer_set_text(&debugText, "0");
+  text_layer_set_font(&debugText, fonts_get_system_font (FONT_KEY_GOTHIC_14));
+  text_layer_set_background_color(&debugText, GColorBlack);
+  text_layer_set_text_color(&debugText, GColorWhite);
+  layer_add_child(&window.layer, &debugText.layer);
+
+
+
   // Game Field
 
   layer_init(&gameLayer, GRect(5, 40, 134, 90));
   layer_set_update_proc(&gameLayer, &draw_game_field);
   layer_add_child(&window.layer, &gameLayer);
+
+  validField = GRect(BALL_SIZE_WIDTH+1,BALL_SIZE_HEIGHT+1,gameLayer.bounds.size.w-BALL_SIZE_WIDTH-1,gameLayer.bounds.size.h-BALL_SIZE_HEIGHT-1);
 
   // Player 
 
