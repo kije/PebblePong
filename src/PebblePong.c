@@ -1,7 +1,7 @@
 #include "pebble_os.h"
 #include "pebble_app.h"
 #include "pebble_fonts.h"
-#include <math.h>
+
 
 
 
@@ -41,6 +41,7 @@ typedef enum Side Side;
 typedef enum Direction Direction;
 typedef struct Paddle Paddle;
 typedef struct Player Player;
+typedef struct MovementVector MovementVector;
 typedef struct Ball Ball;
 
 enum Side {
@@ -63,10 +64,15 @@ struct Player {
   void (*control_handler)(Player *); // Function pointer, which should "controll" the player (e.g. a function that emulates the ki or a function that processes real user input)
 };
 
+struct MovementVector {
+  int16_t vx;
+  int16_t vy;
+};
+
 struct Ball {
   PrecisePoint position;
   GSize size;
-  int32_t angle;
+  MovementVector vetctor;
 };
 
 
@@ -108,54 +114,42 @@ void multiplayer(Player *self) {
 
 }
 
-
-int32_t reflect_angle(int32_t angle) {
-  return angle+2*(90-angle);
-}
-
-bool check_ball_position_is_valid(int32_t x, int32_t y) {
-  return (x > validField.origin.x) && (y > validField.origin.y) && (x < validField.size.w) && (y < validField.size.h);
+void reset_ball(Side side) {
+  GRect bounds = layer_get_bounds(&gameLayer);
+  ball.position = (PrecisePoint){(bounds.size.w/2)-(BALL_SIZE_WIDTH/2), (bounds.size.h/2)-(BALL_SIZE_HEIGHT/2)};
+  ball.vetctor = (side == WEST ? (MovementVector){-1,1} : (MovementVector){1,1});
 }
 
 
-void move_ball(Ball *b) {
+void move_ball() {
+  // Move Ball 
+  ball.position.x += ball.vetctor.vx*BALL_SPEED;
+  ball.position.y += ball.vetctor.vy*BALL_SPEED;
 
-  // cos(angle) -> how much the ball goes right ( > 0 means it goes left)
-  // sin(angle) -> the slope
-
-  float x = (*b).position.x;
-  float y = (*b).position.y;
-
-
-  float c = (cos_lookup(((*b).angle)*ONE_DEGREE)/(float)TRIG_MAX_RATIO);
-  float s = (sin_lookup(((*b).angle)*ONE_DEGREE)/(float)TRIG_MAX_RATIO);
-
-  float new_x = x+(s*(float)BALL_SPEED);
-  float new_y = y+(c*(float)BALL_SPEED);
-
-  int16_t i = BALL_SPEED;
-  while(!check_ball_position_is_valid(new_x, new_y)) {
-    if (i == 0) {
-      (*b).angle = reflect_angle((*b).angle);
-      c = (cos_lookup(((*b).angle)*ONE_DEGREE)/TRIG_MAX_RATIO);
-      s = (sin_lookup(((*b).angle)*ONE_DEGREE)/TRIG_MAX_RATIO);
-      i = BALL_SPEED;
-    }
-    new_x = x+(s*(float)i);
-    new_y = y+(c*(float)i);
-    i--;
-    static char buffer[45] = "";
-
-  snprintf(buffer, sizeof(buffer),
-      "(%d/%d) | (%d/%d) | %d",
-      (int)x, (int)y,(int)new_x, (int)new_y, (int)((*b).angle));
-  text_layer_set_text(&debugText, buffer);
+  // hit edge? 
+  if (ball.position.x < validField.origin.x) {
+    pl2.score++;
+    reset_ball(pl2.side);
+    // Todo reset ball
   }
 
-  (*b).position.y = new_y;
-  (*b).position.x = new_x;
+  if (ball.position.x > validField.size.w) {
+    pl1.score++;
+    reset_ball(pl1.side);
+    // Todo reset ball
+  }
 
-   
+  // if ball touches top or bottom of gameField -> revert vy
+  if (ball.position.y < validField.origin.y || ball.position.y > validField.size.h) {
+    ball.vetctor.vy = -ball.vetctor.vy;
+  }
+
+  static char buffer[45] = "";
+
+  snprintf(buffer, sizeof(buffer),
+      "x: %d | y: %d",
+      (int)ball.position.x, (int) ball.position.y);
+  text_layer_set_text(&debugText, buffer);
 }
 
 
@@ -181,7 +175,7 @@ void init_ball(Ball *b) {
   *b = (Ball){
     {(bounds.size.w/2)-(BALL_SIZE_WIDTH/2), (bounds.size.h/2)-(BALL_SIZE_HEIGHT/2)},
     GSize(BALL_SIZE_WIDTH, BALL_SIZE_HEIGHT),
-    90
+    {1,1}
   };
 }
 
@@ -219,6 +213,14 @@ void draw_game_field(struct Layer *layer, GContext *ctx) {
 
 
   draw_ball(ctx, ball); 
+
+  // update score
+  static char buffer[45] = "";
+
+  snprintf(buffer, sizeof(buffer),
+      "%d | %d",
+      pl1.score, pl2.score);
+  text_layer_set_text(&scoreLayer, buffer);
 }
 
 void handle_init(AppContextRef ctx) {
@@ -231,19 +233,19 @@ void handle_init(AppContextRef ctx) {
 
 
   // Title Layer
-  text_layer_init(&titleLayer, GRect(0,0,144,23));
+  text_layer_init(&titleLayer, GRect(0,0,144,25));
   text_layer_set_text_alignment(&titleLayer, GTextAlignmentCenter);
   text_layer_set_text(&titleLayer, "PebblePong");
-  text_layer_set_font(&titleLayer, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_RALEWAY_THIN_15)));
+  text_layer_set_font(&titleLayer, fonts_get_system_font (FONT_KEY_GOTHIC_18));
   text_layer_set_background_color(&titleLayer, GColorBlack);
   text_layer_set_text_color(&titleLayer, GColorWhite);
   layer_add_child(&window.layer, &titleLayer.layer);
 
   //Score Layer
-  text_layer_init(&scoreLayer, GRect(0,20,144,18));
+  text_layer_init(&scoreLayer, GRect(0,22,144,19));
   text_layer_set_text_alignment(&scoreLayer, GTextAlignmentCenter);
   text_layer_set_text(&scoreLayer, "0 | 0");
-  text_layer_set_font(&scoreLayer, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_RALEWAY_THIN_15)));
+  text_layer_set_font(&scoreLayer, fonts_get_system_font (FONT_KEY_GOTHIC_14));
   text_layer_set_background_color(&scoreLayer, GColorBlack);
   text_layer_set_text_color(&scoreLayer, GColorWhite);
   layer_add_child(&window.layer, &scoreLayer.layer);
@@ -266,7 +268,7 @@ void handle_init(AppContextRef ctx) {
   layer_set_update_proc(&gameLayer, &draw_game_field);
   layer_add_child(&window.layer, &gameLayer);
 
-  validField = GRect(BALL_SIZE_WIDTH+1,BALL_SIZE_HEIGHT+1,gameLayer.bounds.size.w-BALL_SIZE_WIDTH-1,gameLayer.bounds.size.h-BALL_SIZE_HEIGHT-1);
+  validField = GRect(1,1,(gameLayer.bounds.size.w-BALL_SIZE_WIDTH)-1,(gameLayer.bounds.size.h-BALL_SIZE_HEIGHT)-1);
 
   // Player 
 
@@ -286,7 +288,7 @@ void handle_timeout(AppContextRef app_ctx, AppTimerHandle handle, uint32_t cooki
     case UPDATE_TIMER_COOKIE:
       pl1.control_handler(&pl1);
       pl2.control_handler(&pl2);
-      move_ball(&ball);
+      move_ball();
       layer_mark_dirty(&gameLayer);
       layer_mark_dirty(&window.layer);
       timer_handle = app_timer_send_event(app_ctx, UPDATE_FREQUENCY, UPDATE_TIMER_COOKIE);
