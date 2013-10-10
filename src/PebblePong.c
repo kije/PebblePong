@@ -17,12 +17,12 @@ PBL_APP_INFO(MY_UUID,
 
 #define BALL_SIZE_HEIGHT 5
 #define BALL_SIZE_WIDTH 5
-#define BALL_SPEED 3 // Pixel per Update
+#define BALL_SPEED 2 // Pixel per Update
 
-#define PADDLE_SPEED 2
+#define PADDLE_SPEED 1
 
 
-const uint16_t UPDATE_FREQUENCY = 1000/10;
+const uint16_t UPDATE_FREQUENCY = 1000/60;
 #define UPDATE_TIMER_COOKIE 1
 
 const float ONE_DEGREE = TRIG_MAX_ANGLE/360.0F;
@@ -65,8 +65,8 @@ struct Player {
 };
 
 struct MovementVector {
-    int16_t vx;
-    int16_t vy;
+    float vx;
+    float vy;
 };
 
 struct Ball {
@@ -94,7 +94,7 @@ GRect validField;
 
 void ki(Player *self) {
     int32_t ball_vertical_position = ball.position.y;
-    int32_t paddle_vertical_position = (*self).paddle.bounds.origin.y;
+    int32_t paddle_vertical_position = (*self).paddle.bounds.origin.y+((*self).paddle.bounds.size.h/2);
 
     if (ball_vertical_position > paddle_vertical_position) { // ball is above paddle
         (*self).paddle.bounds.origin.y += PADDLE_SPEED;
@@ -117,38 +117,92 @@ void multiplayer(Player *self) {
 void reset_ball(Side side) {
     GRect bounds = layer_get_bounds(&gameLayer);
     ball.position = (PrecisePoint){(bounds.size.w/2)-(BALL_SIZE_WIDTH/2), (bounds.size.h/2)-(BALL_SIZE_HEIGHT/2)};
-    ball.vetctor = (side == WEST ? (MovementVector){-1,1} : (MovementVector){1,1});
+    ball.vetctor = (side == WEST ? (MovementVector){1,1} : (MovementVector){-1,1});
 }
 
 
-void is_colided_with_paddle(Paddle paddle) {
-    bool result = false;
+bool is_colided_with_paddle(Paddle paddle) {
 
-    uint16_t ball_left = (uint16_t)ball.position.x, ball_right = (uint16_t)ball.position.x+ball.size.w,
+    int16_t ball_left = ball.position.x, ball_right = ball.position.x+ball.size.w,
+             ball_top  = ball.position.y, ball_bottom = ball.position.y+ball.size.h;
+
+    int16_t paddle_left = paddle.bounds.origin.x, paddle_right = paddle.bounds.origin.x+paddle.bounds.size.w,
+             paddle_top  = paddle.bounds.origin.y, paddle_bottom = paddle.bounds.origin.y+paddle.bounds.size.h;
+
+
+    if (
+        ((ball_left >= paddle_right) ||
+        (ball_right <= paddle_left)) ||
+        ((ball_top >= paddle_bottom) ||
+        (ball_bottom <= paddle_top))
+    ) {
+        return false;
+    } 
+
+
+    return true;
 }
 
+void ball_hit_paddle(Paddle paddle) {
+    /*if (ball.vetctor.vx < 0) {
+        ball.vetctor.vx -= ball.vetctor.vx;
+    } else {
+        ball.vetctor.vx += 1;
+    }*/
+    ball.vetctor.vx *= -1; // reverse Ball movements
+
+    int colision_point = (paddle.bounds.origin.y + paddle.bounds.size.h) - ball.position.y;
+
+    if (colision_point >= 0 && colision_point < 14) {
+        ball.vetctor.vy = 2;
+    } else if (colision_point >= 14 && colision_point < 21) {
+        ball.vetctor.vy = 2;
+    } else if (colision_point >= 21 && colision_point < 28) {
+        ball.vetctor.vy = 1;
+    } else if (colision_point >= 28 && colision_point < 32) {
+        ball.vetctor.vy = 0;
+    } else if (colision_point >= 32 && colision_point < 39) {
+        ball.vetctor.vy = -1;
+    } else if (colision_point >= 39 && colision_point < 46) {
+        ball.vetctor.vy = -2;
+    } else if (colision_point >= 46 && colision_point <= 60) {
+        ball.vetctor.vy = -2;
+    }
+}
+
+
+// Thanks to flightcrank(https://github.com/flightcrank) and his Pong(https://github.com/flightcrank/pong) for the idea how to move the ball :)
 void move_ball() {
     // Move Ball 
-    ball.position.x += ball.vetctor.vx*BALL_SPEED;
-    ball.position.y += ball.vetctor.vy*BALL_SPEED;
+    ball.position.x += ball.vetctor.vx;
+    ball.position.y += ball.vetctor.vy;
+
+     // if ball touches top or bottom of gameField -> revert vy
+    if (ball.position.y < validField.origin.y || ball.position.y > validField.size.h) {
+        ball.vetctor.vy = -ball.vetctor.vy; // reverse Ball movements
+    }
 
     // hit edge? 
     if (ball.position.x < validField.origin.x) {
         pl2.score++;
-        reset_ball(pl2.side);
-        // Todo reset ball
+        reset_ball(pl1.side);
     }
 
     if (ball.position.x > validField.size.w) {
         pl1.score++;
-        reset_ball(pl1.side);
-        // Todo reset ball
+        reset_ball(pl2.side);
     }
 
-    // if ball touches top or bottom of gameField -> revert vy
-    if (ball.position.y < validField.origin.y || ball.position.y > validField.size.h) {
-        ball.vetctor.vy = -ball.vetctor.vy;
+   
+
+
+    // Ball colision check
+    if (is_colided_with_paddle(pl1.paddle)) {
+        ball_hit_paddle(pl1.paddle);
+    } else if (is_colided_with_paddle(pl2.paddle)) {
+        ball_hit_paddle(pl2.paddle);
     }
+
 
     // Log Position
     static char buffer[45] = "";
@@ -156,9 +210,11 @@ void move_ball() {
     snprintf(
         buffer, 
         sizeof(buffer), 
-        "x: %d | y: %d",
+        "prx: %d x: %d | y: %d plx: %d",
+        (int)pl1.paddle.bounds.origin.y,
         (int)ball.position.x, 
-        (int) ball.position.y
+        (int) ball.position.y,
+        (int)pl2.paddle.bounds.origin.y
     );
     text_layer_set_text(&debugText, buffer);
 }
