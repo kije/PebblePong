@@ -17,9 +17,7 @@ PBL_APP_INFO(MY_UUID,
 
 #define BALL_SIZE_HEIGHT 5
 #define BALL_SIZE_WIDTH 5
-#define BALL_SPEED 2 // Pixel per Update
 
-#define PADDLE_SPEED 1
 
 
 const uint16_t UPDATE_FREQUENCY = 1000/60;
@@ -94,15 +92,15 @@ GRect validField;
 
 void ki(Player *self) {
     int32_t ball_vertical_position = ball.position.y;
-    int32_t paddle_vertical_position = (*self).paddle.bounds.origin.y+((*self).paddle.bounds.size.h/2);
+    int32_t paddle_vertical_position = (*self).paddle.bounds.origin.y;
 
     if (ball_vertical_position > paddle_vertical_position) { // ball is above paddle
-        (*self).paddle.bounds.origin.y += PADDLE_SPEED;
+        (*self).paddle.bounds.origin.y++;
 
     } else if (ball_vertical_position == paddle_vertical_position) {
 
     } else { // ball is below paddle
-        (*self).paddle.bounds.origin.y -= PADDLE_SPEED;
+        (*self).paddle.bounds.origin.y--;
     }
 }
 
@@ -151,23 +149,9 @@ void ball_hit_paddle(Paddle paddle) {
     }*/
     ball.vetctor.vx *= -1; // reverse Ball movements
 
-    int colision_point = (paddle.bounds.origin.y + paddle.bounds.size.h) - ball.position.y;
+    
 
-    if (colision_point >= 0 && colision_point < 14) {
-        ball.vetctor.vy = 2;
-    } else if (colision_point >= 14 && colision_point < 21) {
-        ball.vetctor.vy = 2;
-    } else if (colision_point >= 21 && colision_point < 28) {
-        ball.vetctor.vy = 1;
-    } else if (colision_point >= 28 && colision_point < 32) {
-        ball.vetctor.vy = 0;
-    } else if (colision_point >= 32 && colision_point < 39) {
-        ball.vetctor.vy = -1;
-    } else if (colision_point >= 39 && colision_point < 46) {
-        ball.vetctor.vy = -2;
-    } else if (colision_point >= 46 && colision_point <= 60) {
-        ball.vetctor.vy = -2;
-    }
+
 }
 
 
@@ -367,6 +351,7 @@ void handle_timeout(AppContextRef app_ctx, AppTimerHandle handle, uint32_t cooki
 
 
 void pbl_main(void *params) {
+    srand(time(NULL));
     PebbleAppHandlers handlers = {
         .init_handler = &handle_init,
         .timer_handler = &handle_timeout
