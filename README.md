@@ -3,7 +3,7 @@ PebblePong
 
 Pong for the Pebble Smartwatch
 
-**AS LONG AS THIS PROJECT IS UNDER DEVELOPMENT AND HAS NO RELEASE, CHECK OUT THE WORK BRANCH**
+*Current release* (***v0.9b***) *is a* ***pre-release***, *its not feature complete, nor finished*
 
 ## Donate
 Bitcoin: 1kijeg6fvMHqtyBEGE6DtjUimrQ8WUXPE
