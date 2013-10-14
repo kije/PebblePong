@@ -20,7 +20,7 @@ PBL_APP_INFO(MY_UUID,
 
 
 
-const uint16_t UPDATE_FREQUENCY = 1000/60;
+const uint16_t UPDATE_FREQUENCY = 1000/30;
 #define UPDATE_TIMER_COOKIE 1
 
 const float ONE_DEGREE = TRIG_MAX_ANGLE/360.0F;
@@ -88,6 +88,8 @@ Ball ball;
 GRect validField;
 
 
+int16_t button_delta = 0; // To store button clicks
+
 
 
 void ki(Player *self) {
@@ -105,6 +107,8 @@ void ki(Player *self) {
 }
 
 void human(Player *self) {
+    (*self).paddle.bounds.origin.y -= button_delta;
+    button_delta = 0;
 }
 
 // TODO: Multiplayer
@@ -170,11 +174,13 @@ void move_ball() {
     if (ball.position.x < validField.origin.x) {
         pl2.score++;
         reset_ball(pl1.side);
+        vibes_short_pulse();
     }
 
     if (ball.position.x > validField.size.w) {
         pl1.score++;
         reset_ball(pl2.side);
+        vibes_short_pulse();
     }
 
    
@@ -277,6 +283,23 @@ void draw_game_field(struct Layer *layer, GContext *ctx) {
     text_layer_set_text(&scoreLayer, buffer);
 }
 
+void up_handler(ClickRecognizerRef recognizer, Window *window) {
+    button_delta++;
+}
+
+void down_handler(ClickRecognizerRef recognizer, Window *window) {
+  button_delta--;
+}
+
+
+void config_provider(ClickConfig **config, Window *window) {
+    config[BUTTON_ID_UP]->click.handler = (ClickHandler) &up_handler;
+    config[BUTTON_ID_UP]->click.repeat_interval_ms =30; // REPEATS LESS THAN ONCE PER UPDATE
+
+    config[BUTTON_ID_DOWN]->click.handler = (ClickHandler) &down_handler;
+    config[BUTTON_ID_DOWN]->click.repeat_interval_ms = 30; // REPEATS LESS THAN ONCE PER UPDATE
+}
+
 void handle_init(AppContextRef ctx) {
 
     resource_init_current_app(&PEBBLE_PONG_RESOURCES);
@@ -284,6 +307,8 @@ void handle_init(AppContextRef ctx) {
     window_init(&window, "PebblePong");
     window_set_background_color(&window, GColorBlack);
     window_stack_push(&window, true /* Animated */);
+
+    window_set_click_config_provider(&window, (ClickConfigProvider) config_provider); // Only till the Accelometer-API is released
 
 
     // Title Layer
@@ -334,6 +359,8 @@ void handle_init(AppContextRef ctx) {
 
     // Setup timer
 
+
+
     timer_handle = app_timer_send_event(ctx, UPDATE_FREQUENCY, UPDATE_TIMER_COOKIE);
 }
 
@@ -350,11 +377,13 @@ void handle_timeout(AppContextRef app_ctx, AppTimerHandle handle, uint32_t cooki
 }
 
 
+
 void pbl_main(void *params) {
     srand(time(NULL));
     PebbleAppHandlers handlers = {
         .init_handler = &handle_init,
         .timer_handler = &handle_timeout
     };
+
     app_event_loop(params, &handlers);
 }
