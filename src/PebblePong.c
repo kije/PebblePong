@@ -88,8 +88,9 @@ Ball ball;
 GRect validField;
 
 
-int16_t button_delta = 0; // To store button clicks
 
+volatile bool button_up_pressed;
+volatile bool button_down_pressed;
 
 
 void ki(Player *self) {
@@ -107,8 +108,13 @@ void ki(Player *self) {
 }
 
 void human(Player *self) {
-    (*self).paddle.bounds.origin.y -= button_delta;
-    button_delta = 0;
+    if (button_up_pressed) {
+        (*self).paddle.bounds.origin.y++;
+    }
+
+    if (button_down_pressed) {
+        (*self).paddle.bounds.origin.y--;
+    }
 }
 
 // TODO: Multiplayer
@@ -146,11 +152,6 @@ bool is_colided_with_paddle(Paddle paddle) {
 }
 
 void ball_hit_paddle(Paddle paddle) {
-    /*if (ball.vetctor.vx < 0) {
-        ball.vetctor.vx -= ball.vetctor.vx;
-    } else {
-        ball.vetctor.vx += 1;
-    }*/
     ball.vetctor.vx *= -1; // reverse Ball movements
 
     
@@ -200,11 +201,11 @@ void move_ball() {
     snprintf(
         buffer, 
         sizeof(buffer), 
-        "prx: %d x: %d | y: %d plx: %d",
-        (int)pl1.paddle.bounds.origin.y,
+        "bup: %d x: %d | y: %d bdp: %d",
+        button_up_pressed?1:0,
         (int)ball.position.x, 
         (int) ball.position.y,
-        (int)pl2.paddle.bounds.origin.y
+        button_down_pressed?1:0
     );
     text_layer_set_text(&debugText, buffer);
 }
@@ -283,32 +284,44 @@ void draw_game_field(struct Layer *layer, GContext *ctx) {
     text_layer_set_text(&scoreLayer, buffer);
 }
 
-void up_handler(ClickRecognizerRef recognizer, Window *window) {
-    button_delta++;
+void up_up_handler(ClickRecognizerRef recognizer, Window *window) {
+    button_up_pressed=false;
 }
 
-void down_handler(ClickRecognizerRef recognizer, Window *window) {
-  button_delta--;
+void up_down_handler(ClickRecognizerRef recognizer, Window *window) {
+    button_up_pressed=true;
+}
+
+
+void down_up_handler(ClickRecognizerRef recognizer, Window *window) {
+    button_down_pressed=false;
+}
+
+void down_down_handler(ClickRecognizerRef recognizer, Window *window) {
+    button_down_pressed=true;
 }
 
 
 void config_provider(ClickConfig **config, Window *window) {
-    config[BUTTON_ID_UP]->click.handler = (ClickHandler) &up_handler;
-    config[BUTTON_ID_UP]->click.repeat_interval_ms =30; // REPEATS LESS THAN ONCE PER UPDATE
 
-    config[BUTTON_ID_DOWN]->click.handler = (ClickHandler) &down_handler;
-    config[BUTTON_ID_DOWN]->click.repeat_interval_ms = 30; // REPEATS LESS THAN ONCE PER UPDATE
+    config[BUTTON_ID_UP]->raw.down_handler = (ClickHandler) up_up_handler;
+    config[BUTTON_ID_UP]->raw.up_handler = (ClickHandler) up_down_handler;
+
+    config[BUTTON_ID_DOWN]->raw.down_handler = (ClickHandler) down_up_handler;
+    config[BUTTON_ID_DOWN]->raw.up_handler = (ClickHandler) down_down_handler;
+
 }
 
 void handle_init(AppContextRef ctx) {
 
     resource_init_current_app(&PEBBLE_PONG_RESOURCES);
 
+
     window_init(&window, "PebblePong");
+    window_set_click_config_provider(&window, (ClickConfigProvider) config_provider); // Only till the Accelometer-API is released
+
     window_set_background_color(&window, GColorBlack);
     window_stack_push(&window, true /* Animated */);
-
-    window_set_click_config_provider(&window, (ClickConfigProvider) config_provider); // Only till the Accelometer-API is released
 
 
     // Title Layer
@@ -362,6 +375,10 @@ void handle_init(AppContextRef ctx) {
 
 
     timer_handle = app_timer_send_event(ctx, UPDATE_FREQUENCY, UPDATE_TIMER_COOKIE);
+
+
+    button_up_pressed=true;
+    button_down_pressed=true;
 }
 
 void handle_timeout(AppContextRef app_ctx, AppTimerHandle handle, uint32_t cookie) {
