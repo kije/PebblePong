@@ -24,6 +24,7 @@
 # Ignore waf build tool generated files
 .waf*
 build
+!build/PebblePong.pbw
 .lock-waf*
 
 # Ignore linked files/directories
@@ -39,4 +40,7 @@ serial_dump.txt
 
 # MAC OS X
 .DS_STORE
+
+
+# Add Bin
 
