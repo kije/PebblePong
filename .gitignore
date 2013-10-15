@@ -23,8 +23,7 @@
 
 # Ignore waf build tool generated files
 .waf*
-build
-!build/PebblePong.pbw
+build/*
 .lock-waf*
 
 # Ignore linked files/directories
@@ -43,4 +42,4 @@ serial_dump.txt
 
 
 # Add Bin
-
+!build/PebblePong.pbw
