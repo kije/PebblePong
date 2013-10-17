@@ -1,9 +1,26 @@
+/*
+PEBBLEPONG by kije (http://github.com/kije/)
+
+TODO:
+– Clean up code
+– – Javadoc 
+– Better AI
+– Accelometer controlled Paddles (API not released yet :/)
+– Settings-Menu
+– Muliplayer over Bluetooth (or over httpebble -> protocol for communicate with other pebble implementations on multiple platforms)
+– More realistic ball movement 
+ */
+
+
+
+
 #include "pebble_os.h"
 #include "pebble_app.h"
 #include "pebble_fonts.h"
 
+#define DEBUG 0
 
-
+#define COUNT_OF(x) ((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
 
 #define MY_UUID { 0x61, 0xD1, 0x20, 0x75, 0xB7, 0x87, 0x4C, 0xCD, 0x86, 0xD5, 0xED, 0x5D, 0x30, 0x4C, 0x2A, 0xA4 }
 PBL_APP_INFO(MY_UUID,
@@ -20,7 +37,7 @@ PBL_APP_INFO(MY_UUID,
 
 
 
-const uint16_t UPDATE_FREQUENCY = 1000/30;
+const uint16_t UPDATE_FREQUENCY = 1000/60;
 #define UPDATE_TIMER_COOKIE 1
 
 const float ONE_DEGREE = TRIG_MAX_ANGLE/360.0F;
@@ -58,7 +75,7 @@ struct Player {
     uint16_t score;
     Paddle paddle;
     Side side;
-    bool isKI;
+    int isKI;
     void (*control_handler)(Player *); // Function pointer, which should "controll" the player (e.g. a function that emulates the ki or a function that processes real user input)
 };
 
@@ -85,35 +102,45 @@ Layer gameLayer;
 Player pl1,pl2;
 Ball ball;
 
-GRect validField;
+GRect validBallField;
+GRect validPaddleField;
 
 
 
-volatile bool button_up_pressed;
-volatile bool button_down_pressed;
+int button_up_pressed;
+int button_down_pressed;
+
+PrecisePoint ball_history[16];
+uint16_t current_ball_history_position = 0;
 
 
-void ki(Player *self) {
-    int32_t ball_vertical_position = ball.position.y;
+void ai(Player *self) {
+    int32_t ball_vertical_position = ball_history[(current_ball_history_position-COUNT_OF(ball_history))%COUNT_OF(ball_history)].y; // Face ball position -> Emulate Inertia
     int32_t paddle_vertical_position = (*self).paddle.bounds.origin.y;
 
-    if (ball_vertical_position > paddle_vertical_position) { // ball is above paddle
-        (*self).paddle.bounds.origin.y++;
+    if (((*self).paddle.bounds.origin.y <= validPaddleField.size.h)) {
 
-    } else if (ball_vertical_position == paddle_vertical_position) {
+        if (ball_vertical_position > paddle_vertical_position) { // ball is above paddle
+            (*self).paddle.bounds.origin.y++;
 
-    } else { // ball is below paddle
-        (*self).paddle.bounds.origin.y--;
+        } 
+    }
+
+    if (((*self).paddle.bounds.origin.y > validPaddleField.origin.y)) {
+
+        if (ball_vertical_position < paddle_vertical_position) { // ball is below paddle
+                (*self).paddle.bounds.origin.y--;
+        }
     }
 }
 
 void human(Player *self) {
-    if (button_up_pressed) {
-        (*self).paddle.bounds.origin.y++;
+    if (button_up_pressed != 0 && ((*self).paddle.bounds.origin.y > validPaddleField.origin.y)) { 
+        (*self).paddle.bounds.origin.y--;
     }
 
-    if (button_down_pressed) {
-        (*self).paddle.bounds.origin.y--;
+    if (button_down_pressed != 0 && ((*self).paddle.bounds.origin.y <= validPaddleField.size.h)) {
+        (*self).paddle.bounds.origin.y++;
     }
 }
 
@@ -125,11 +152,15 @@ void multiplayer(Player *self) {
 void reset_ball(Side side) {
     GRect bounds = layer_get_bounds(&gameLayer);
     ball.position = (PrecisePoint){(bounds.size.w/2)-(BALL_SIZE_WIDTH/2), (bounds.size.h/2)-(BALL_SIZE_HEIGHT/2)};
-    ball.vetctor = (side == WEST ? (MovementVector){1,1} : (MovementVector){-1,1});
+    if (side == pl1.side) {
+        ball.vetctor = (MovementVector){1,1}
+    } else {
+        ball.vetctor = (MovementVector){-1,1}
+    }
 }
 
 
-bool is_colided_with_paddle(Paddle paddle) {
+int is_colided_with_paddle(Paddle paddle) {
 
     int16_t ball_left = ball.position.x, ball_right = ball.position.x+ball.size.w,
              ball_top  = ball.position.y, ball_bottom = ball.position.y+ball.size.h;
@@ -144,19 +175,20 @@ bool is_colided_with_paddle(Paddle paddle) {
         ((ball_top >= paddle_bottom) ||
         (ball_bottom <= paddle_top))
     ) {
-        return false;
+        return 0;
     } 
 
 
-    return true;
+    return 1;
 }
 
 void ball_hit_paddle(Paddle paddle) {
     ball.vetctor.vx *= -1; // reverse Ball movements
+}
 
-    
-
-
+void register_ball_position() {
+    ball_history[current_ball_history_position] = ball.position;
+    current_ball_history_position = (current_ball_history_position+1)%COUNT_OF(ball_history);
 }
 
 
@@ -167,18 +199,18 @@ void move_ball() {
     ball.position.y += ball.vetctor.vy;
 
      // if ball touches top or bottom of gameField -> revert vy
-    if (ball.position.y < validField.origin.y || ball.position.y > validField.size.h) {
+    if (ball.position.y < validBallField.origin.y || ball.position.y > validBallField.size.h) {
         ball.vetctor.vy = -ball.vetctor.vy; // reverse Ball movements
     }
 
     // hit edge? 
-    if (ball.position.x < validField.origin.x) {
+    if (ball.position.x < validBallField.origin.x) {
         pl2.score++;
         reset_ball(pl1.side);
         vibes_short_pulse();
     }
 
-    if (ball.position.x > validField.size.w) {
+    if (ball.position.x > validBallField.size.w) {
         pl1.score++;
         reset_ball(pl2.side);
         vibes_short_pulse();
@@ -188,12 +220,15 @@ void move_ball() {
 
 
     // Ball colision check
-    if (is_colided_with_paddle(pl1.paddle)) {
+    if (is_colided_with_paddle(pl1.paddle) != 0) {
         ball_hit_paddle(pl1.paddle);
-    } else if (is_colided_with_paddle(pl2.paddle)) {
+    } else if (is_colided_with_paddle(pl2.paddle) != 0) {
         ball_hit_paddle(pl2.paddle);
     }
 
+
+    // Store history
+    register_ball_position();
 
     // Log Position
     static char buffer[45] = "";
@@ -211,7 +246,7 @@ void move_ball() {
 }
 
 
-void init_player(Player *player, Side side, bool is_ki) {
+void init_player(Player *player, Side side, int is_ki) {
     GRect bounds = layer_get_bounds(&gameLayer);
     Paddle paddle = (Paddle){GRect(
         (side == WEST ? 0+PADDLE_WIDTH : bounds.size.w-PADDLE_WIDTH-2 /* Why 2 px offset? */),  
@@ -224,7 +259,7 @@ void init_player(Player *player, Side side, bool is_ki) {
         .paddle = paddle, 
         .side = side, 
         .isKI = is_ki, 
-        .control_handler = (is_ki ? &ki : &human)
+        .control_handler = (is_ki != 0 ? &ai : &human)
     };
 }
 
@@ -285,30 +320,30 @@ void draw_game_field(struct Layer *layer, GContext *ctx) {
 }
 
 void up_up_handler(ClickRecognizerRef recognizer, Window *window) {
-    button_up_pressed=false;
+    button_up_pressed=0;
 }
 
 void up_down_handler(ClickRecognizerRef recognizer, Window *window) {
-    button_up_pressed=true;
+    button_up_pressed=1;
 }
 
 
 void down_up_handler(ClickRecognizerRef recognizer, Window *window) {
-    button_down_pressed=false;
+    button_down_pressed=0;
 }
 
 void down_down_handler(ClickRecognizerRef recognizer, Window *window) {
-    button_down_pressed=true;
+    button_down_pressed=1;
 }
 
 
 void config_provider(ClickConfig **config, Window *window) {
 
-    config[BUTTON_ID_UP]->raw.down_handler = (ClickHandler) up_up_handler;
-    config[BUTTON_ID_UP]->raw.up_handler = (ClickHandler) up_down_handler;
+    config[BUTTON_ID_UP]->raw.down_handler = (ClickHandler) up_down_handler;
+    config[BUTTON_ID_UP]->raw.up_handler = (ClickHandler) up_up_handler;
 
-    config[BUTTON_ID_DOWN]->raw.down_handler = (ClickHandler) down_up_handler;
-    config[BUTTON_ID_DOWN]->raw.up_handler = (ClickHandler) down_down_handler;
+    config[BUTTON_ID_DOWN]->raw.down_handler = (ClickHandler) down_down_handler;
+    config[BUTTON_ID_DOWN]->raw.up_handler = (ClickHandler) down_up_handler;
 
 }
 
@@ -343,14 +378,16 @@ void handle_init(AppContextRef ctx) {
     layer_add_child(&window.layer, &scoreLayer.layer);
 
 
-    //Score Layer
-    text_layer_init(&debugText, GRect(0,130,144,18));
-    text_layer_set_text_alignment(&debugText, GTextAlignmentCenter);
-    text_layer_set_text(&debugText, "0");
-    text_layer_set_font(&debugText, fonts_get_system_font (FONT_KEY_GOTHIC_14));
-    text_layer_set_background_color(&debugText, GColorBlack);
-    text_layer_set_text_color(&debugText, GColorWhite);
-    layer_add_child(&window.layer, &debugText.layer);
+    //Debug Layer
+    if (DEBUG) {
+        text_layer_init(&debugText, GRect(0,130,144,18));
+        text_layer_set_text_alignment(&debugText, GTextAlignmentCenter);
+        text_layer_set_text(&debugText, "0");
+        text_layer_set_font(&debugText, fonts_get_system_font (FONT_KEY_GOTHIC_14));
+        text_layer_set_background_color(&debugText, GColorBlack);
+        text_layer_set_text_color(&debugText, GColorWhite);
+        layer_add_child(&window.layer, &debugText.layer);
+    }
 
 
 
@@ -360,12 +397,13 @@ void handle_init(AppContextRef ctx) {
     layer_set_update_proc(&gameLayer, &draw_game_field);
     layer_add_child(&window.layer, &gameLayer);
 
-    validField = GRect(1,1,(gameLayer.bounds.size.w-BALL_SIZE_WIDTH)-1,(gameLayer.bounds.size.h-BALL_SIZE_HEIGHT)-1);
+    validBallField = GRect(1,1,(gameLayer.bounds.size.w-BALL_SIZE_WIDTH)-1,(gameLayer.bounds.size.h-BALL_SIZE_HEIGHT)-1);
+    validPaddleField = GRect(1,1,(gameLayer.bounds.size.w-PADDLE_WIDTH)-2,(gameLayer.bounds.size.h-PADDLE_HEIGHT)-2);
 
     // Player 
 
-    init_player(&pl1, WEST, true);
-    init_player(&pl2, EAST, false);
+    init_player(&pl1, WEST, 1);
+    init_player(&pl2, EAST, 0);
 
     // Ball 
     init_ball(&ball);
@@ -377,8 +415,8 @@ void handle_init(AppContextRef ctx) {
     timer_handle = app_timer_send_event(ctx, UPDATE_FREQUENCY, UPDATE_TIMER_COOKIE);
 
 
-    button_up_pressed=true;
-    button_down_pressed=true;
+    button_up_pressed=0;
+    button_down_pressed=0;
 }
 
 void handle_timeout(AppContextRef app_ctx, AppTimerHandle handle, uint32_t cookie) {
