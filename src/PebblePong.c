@@ -18,7 +18,7 @@ TODO:
 #include "pebble_app.h"
 #include "pebble_fonts.h"
 
-#define DEBUG 0
+#define DEBUG 1
 
 #define COUNT_OF(x) ((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
 
